@@ -8,6 +8,7 @@ license: "MIT"
 depends: [
   "dune" {>= "3.21"}
   "ocaml"
+  "base64"
   "bigstringaf"
   "cstruct"
   "ppx_cstruct"
@@ -16,6 +17,7 @@ depends: [
   "ipaddr"
   "mirage-crypto-ec"
   "mirage-crypto-rng"
+  "otoml"
   "x509"
   "odoc" {with-doc}
 ]

@@ -46,7 +46,8 @@ let handle_conn ~signing_key net flow addr =
 let main ~net =
   Switch.run ~name:"main" @@ fun sw ->
   let signing_key, signing_pub = load_identity !identity_file in
-  X509.Public_key.encode_pem (`ED25519 signing_pub) |> Printf.printf "%s\n%!";
+  traceln "My public key: %s"
+    (Mirage_crypto_ec.Ed25519.pub_to_octets signing_pub |> Base64.encode_string);
   let sockaddr = `Tcp (!listening_addr, !listening_port) in
   traceln "listening on %a" Eio.Net.Sockaddr.pp sockaddr;
   let socket = Eio.Net.listen ~sw net sockaddr ~backlog:10 ~reuse_addr:true in

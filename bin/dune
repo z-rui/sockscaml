@@ -14,12 +14,13 @@
  (name client)
  (libraries
   sockscaml
+  base64
   eio
   eio_main
   ipaddr
   mirage-crypto-ec
   mirage-crypto-rng.unix
-  x509))
+  otoml))
 
 (executable
  (public_name ss-server)
@@ -28,6 +29,7 @@
  (libraries
   sockscaml
   socks5
+  base64
   eio
   eio_main
   ipaddr

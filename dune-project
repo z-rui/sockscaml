@@ -16,6 +16,7 @@
  (description "An encrypted Socks5 protocol written in OCaml")
  (depends
   ocaml
+  base64
   bigstringaf
   cstruct
   ppx_cstruct
@@ -24,6 +25,7 @@
   ipaddr
   mirage-crypto-ec
   mirage-crypto-rng
+  otoml
   x509))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
