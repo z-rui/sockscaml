@@ -26,7 +26,7 @@ let arg_spec =
       "dial address" );
     ( "-k",
       Arg.Set_string identity_pub,
-      "base64-encoded server signing public key" );
+      "server identity file (public key in PEM format)" );
   ]
 
 let load_identity path =

@@ -1,5 +1,5 @@
 (library
  (name sockscaml)
- (libraries eio chacha20 mirage-crypto-ec mirage-crypto-rng)
+ (libraries chacha20 cstruct eio mirage-crypto-ec mirage-crypto-rng)
  (preprocess
   (pps ppx_cstruct)))

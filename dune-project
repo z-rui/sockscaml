@@ -15,8 +15,10 @@
  (synopsis "SOCKS in OCaml")
  (description "An encrypted Socks5 protocol written in OCaml")
  (depends
-  base64
   ocaml
+  bigstringaf
+  cstruct
+  ppx_cstruct
   eio
   eio_main
   ipaddr
