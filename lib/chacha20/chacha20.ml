@@ -54,13 +54,12 @@ let crypt_core t buf ~off ~len =
   assert (t.pos = 0);
   assert (len > 0);
   let rec loop off len =
-    Unsafe.chacha20_block_add ~dst:t.buf ~src:t.init;
     if len > block_size then begin
-      Unsafe.xorblit t.buf 0 buf off block_size;
-      incr_counter t;
+      Unsafe.chacha20_loopbody ~out:buf ~off ~dst:t.buf ~src:t.init;
       loop (off + block_size) (len - block_size)
     end
     else if len > 0 then begin
+      Unsafe.chacha20_block_add ~dst:t.buf ~src:t.init;
       Unsafe.xorblit t.buf 0 buf off len;
       t.pos <- len
     end
