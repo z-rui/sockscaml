@@ -50,36 +50,22 @@ let incr_counter t =
   if ctr = Int32.max_int then raise CounterOverflow;
   set_counter t (Int32.add ctr 1l)
 
-let crypt_core t buf ~off ~len =
-  assert (t.pos = 0);
-  assert (len > 0);
-  let rec loop off len =
-    if len > block_size then begin
-      Unsafe.chacha20_loopbody ~out:buf ~off ~dst:t.buf ~src:t.init;
-      loop (off + block_size) (len - block_size)
-    end
-    else if len > 0 then begin
-      Unsafe.chacha20_block_add ~dst:t.buf ~src:t.init;
-      Unsafe.xorblit t.buf 0 buf off len;
-      t.pos <- len
-    end
-  in
-  loop off len
+let[@inline] crypt_core t buf ~off ~len =
+  t.pos <- Unsafe.chacha20_crypt_core ~out:buf ~off ~len ~dst:t.buf ~src:t.init
 
 let crypt t buf =
   let len = Bigstringaf.length buf in
-  if len > 0 then
-    if t.pos = 0 then crypt_core t buf ~off:0 ~len
-    else
-      let n = block_size - t.pos in
-      if len < n then begin
-        Unsafe.xorblit t.buf t.pos buf 0 len;
-        t.pos <- t.pos + len
-      end
-      else begin
-        assert (n >= 0);
-        if n > 0 then Unsafe.xorblit t.buf t.pos buf 0 n;
-        t.pos <- 0;
-        incr_counter t;
-        if len > n then crypt_core t buf ~off:n ~len:(len - n)
-      end
+  if t.pos = 0 then crypt_core t buf ~off:0 ~len
+  else
+    let n = block_size - t.pos in
+    if len < n then begin
+      Unsafe.xorblit t.buf t.pos buf 0 len;
+      t.pos <- t.pos + len
+    end
+    else begin
+      assert (n >= 0);
+      if n > 0 then Unsafe.xorblit t.buf t.pos buf 0 n;
+      t.pos <- 0;
+      incr_counter t;
+      if len > n then crypt_core t buf ~off:n ~len:(len - n)
+    end

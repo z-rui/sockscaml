@@ -144,18 +144,29 @@ CAMLprim value c_chacha20_xorblit(value v_src, value v_srcpos, value v_dst, valu
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value c_chacha20_loopbody(value v_out, value v_off, value v_dst, value v_src)
+CAMLprim value c_chacha20_crypt_core(value v_out, value v_off, value v_len, value v_dst, value v_src)
 {
-    CAMLparam4(v_out, v_off, v_dst, v_src);
+    CAMLparam5(v_out, v_off, v_len, v_dst, v_src);
     uint8_t *out = Caml_ba_data_val(v_out) + Long_val(v_off);
+    intnat len = Long_val(v_len);
     uint32_t *dst = (uint32_t *) Caml_ba_data_val(v_dst);
     uint32_t *src = (uint32_t *) Caml_ba_data_val(v_src);
     uint32_t *ctr = &src[12];
 
-    memcpy(dst, src, 64);
-    chacha20_block(dst);
-    block_add(dst, src);
-    memxor(out, (uint8_t *) dst, 64);
-    store_le32(ctr, load_le32(ctr) + 1);
-    CAMLreturn(Val_unit);
+    while (len > 64) {
+        memcpy(dst, src, 64);
+        chacha20_block(dst);
+        block_add(dst, src);
+        memxor(out, (uint8_t *) dst, 64);
+        store_le32(ctr, load_le32(ctr) + 1);
+        out += 64;
+        len -= 64;
+    }
+    if (len > 0) {
+        memcpy(dst, src, 64);
+        chacha20_block(dst);
+        block_add(dst, src);
+        memxor(out, (uint8_t *) dst, len);
+    }
+    CAMLreturn(Val_int(len));
 }
