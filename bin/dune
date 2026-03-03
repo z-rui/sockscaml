@@ -1,0 +1,36 @@
+(executable
+ (name bench_chacha20)
+ (modules bench_chacha20)
+ (libraries chacha20))
+
+(executable
+ (name socks5_server)
+ (modules socks5_server)
+ (libraries socks5 eio eio_main))
+
+(executable
+ (public_name ss-client)
+ (modules client)
+ (name client)
+ (libraries
+  sockscaml
+  eio
+  eio_main
+  ipaddr
+  mirage-crypto-ec
+  mirage-crypto-rng.unix
+  x509))
+
+(executable
+ (public_name ss-server)
+ (modules server)
+ (name server)
+ (libraries
+  sockscaml
+  socks5
+  eio
+  eio_main
+  ipaddr
+  mirage-crypto-ec
+  mirage-crypto-rng.unix
+  x509))

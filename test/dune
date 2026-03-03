@@ -1,0 +1,13 @@
+;(test
+; (name test_sockscaml)
+; (libraries sockscaml eio eio.mock))
+
+(test
+ (name test_chacha20)
+ (modules test_chacha20)
+ (libraries chacha20 bigstringaf cstruct))
+
+(test
+ (name test_wrap)
+ (modules test_wrap)
+ (libraries sockscaml eio eio.mock))

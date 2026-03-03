@@ -1,0 +1,7 @@
+(library
+ (name chacha20)
+ (foreign_stubs
+  (language c)
+  (names chacha20)
+  (flags :standard -O3))
+ (libraries bigstringaf))
