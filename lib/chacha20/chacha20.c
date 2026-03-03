@@ -106,18 +106,32 @@ CAMLprim value c_chacha20_block(value v_output)
     CAMLreturn(Val_unit);
 }
 
+static inline void block_add(uint32_t *restrict dst, const uint32_t *restrict src)
+{
+    intnat i;
+
+    for (i = 0; i < 16; i++)
+        dst[i] += src[i];
+}
+
 CAMLprim value c_chacha20_block_add(value v_dst, value v_src)
 {
     CAMLparam2(v_dst, v_src);
     uint32_t *dst = (uint32_t *) Caml_ba_data_val(v_dst);
     const uint32_t *src = (const uint32_t *) Caml_ba_data_val(v_src);
-    intnat i;
 
     memcpy(dst, src, 64);
     chacha20_block(dst);
-    for (i = 0; i < 16; i++)
-        dst[i] += src[i];
+    block_add(dst, src);
     CAMLreturn(Val_unit);
+}
+
+static inline void memxor(uint8_t *restrict dst, const uint8_t *restrict src, intnat n)
+{
+    intnat i;
+
+    for (i = 0; i < n; i++)
+        dst[i] ^= src[i];
 }
 
 CAMLprim value c_chacha20_xorblit(value v_src, value v_srcpos, value v_dst, value v_dstpos, value v_n)
@@ -126,9 +140,6 @@ CAMLprim value c_chacha20_xorblit(value v_src, value v_srcpos, value v_dst, valu
     uint8_t *dst = Caml_ba_data_val(v_dst) + Long_val(v_dstpos);
     const uint8_t *src = Caml_ba_data_val(v_src) + Long_val(v_srcpos);
     intnat n = Long_val(v_n);
-    intnat i;
-
-    for (i = 0; i < n; i++)
-        dst[i] ^= src[i];
+    memxor(dst, src, n);
     CAMLreturn(Val_unit);
 }

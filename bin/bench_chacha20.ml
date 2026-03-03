@@ -1,10 +1,8 @@
-let xorshift x =
+let[@inline] xorshift x0 =
   let open Int32 in
-  let x0 = !x in
   let x1 = logxor x0 (shift_left x0 13) in
   let x2 = logxor x1 (shift_right_logical x1 17) in
   let x3 = logxor x2 (shift_left x2 5) in
-  x := x3;
   x3
 
 let hex_of_string s =
@@ -19,8 +17,10 @@ let bench_chacha20 () =
   let rng = ref 1l in
   let input = Bigstringaf.create bench_size in
   for i = 0 to bench_size - 1 do
+    let next = xorshift !rng in
+    rng := next;
     Bigstringaf.unsafe_set input i
-      (Char.unsafe_chr (Int32.to_int (xorshift rng) land 0xff))
+      (Char.unsafe_chr (Int32.to_int next land 0xff))
   done;
   Printf.eprintf "bench chacha20 %d\n" bench_size;
   Printf.eprintf "first 10 bytes: %s\n"
