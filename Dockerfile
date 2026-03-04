@@ -17,6 +17,6 @@ RUN opam-2.5 exec -- dune build bin/server.exe --profile release
 
 FROM alpine:latest
 WORKDIR /app
-COPY --from=build /home/opam/src/_build/install/default/bin/ss-server ./app
+COPY --from=build /home/opam/src/_build/default/bin/server.exe ./app
 
 ENTRYPOINT ["./app"]
