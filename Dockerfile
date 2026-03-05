@@ -15,7 +15,7 @@ RUN echo '(lang dune 3.0)' > dune-workspace && \
 
 RUN opam-2.5 exec -- dune build bin/server.exe --profile release
 
-FROM alpine:latest
+FROM scratch
 WORKDIR /app
 COPY --from=build /home/opam/src/_build/default/bin/server.exe ./app
 
