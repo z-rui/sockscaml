@@ -1,0 +1,5 @@
+# ocamlbuild and Dune default working directory
+_build/
+
+# Local OPAM switch
+_opam/
