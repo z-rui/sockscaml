@@ -14,16 +14,14 @@ let load_config path =
     let t = Parser.from_file path in
     let remote_name = find t get_string [ "remote" ] in
     let r = find t get_value [ remote_name ] in
-    Some
-      {
-        listen_addr =
-          find_or ~default:"127.0.0.1" t get_string [ "listen_addr" ];
-        listen_port = find t get_integer [ "listen_port" ];
-        dial_host = find r get_string [ "addr" ];
-        dial_service = find r (get_string ~strict:false) [ "port" ];
-        identity_pub =
-          find r (Fun.compose Base64.decode_exn get_string) [ "identity" ];
-      }
+    {
+      listen_addr = find_or ~default:"127.0.0.1" t get_string [ "listen_addr" ];
+      listen_port = find t get_integer [ "listen_port" ];
+      dial_host = find r get_string [ "addr" ];
+      dial_service = find r (get_string ~strict:false) [ "port" ];
+      identity_pub =
+        find r (Fun.compose Base64.decode_exn get_string) [ "identity" ];
+    }
   with Parse_error (loc, msg) ->
     (match loc with
     | Some (line, _) -> traceln "%s:%d: %s" path line msg
@@ -67,8 +65,6 @@ let () =
   let cfg_path =
     match Sys.argv with [| _; path |] -> path | _ -> "config.ini"
   in
-  match load_config cfg_path with
-  | None -> failwith "cannot parse config file"
-  | Some cfg ->
-      Mirage_crypto_rng_unix.use_default ();
-      Eio_main.run @@ fun env -> main ~net:(Eio.Stdenv.net env) ~cfg
+  Mirage_crypto_rng_unix.use_default ();
+  Eio_main.run @@ fun env ->
+  main ~net:(Eio.Stdenv.net env) ~cfg:(load_config cfg_path)
