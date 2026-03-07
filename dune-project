@@ -19,6 +19,7 @@
   base64
   bigstringaf
   cstruct
+  ISO8601
   ppx_cstruct
   eio
   eio_main
