@@ -33,6 +33,7 @@
   eio
   eio_main
   ipaddr
+  ISO8601
   mirage-crypto-ec
   mirage-crypto-rng.unix
   x509))

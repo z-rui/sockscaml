@@ -39,7 +39,20 @@ let load_identity path =
     X509.Private_key.encode_pem (`ED25519 priv) |> write_file path;
     (priv, pub)
 
+module AddrCache = Sockscaml.Timed_cache.Make (String)
+
+let addr_cache = AddrCache.create 10 ~ttl:3600.
+
+let update_addr_cache = function
+  | `Tcp (addr, port) ->
+      let now = Unix.time () in
+      let addr_str = Format.asprintf "%a" Eio.Net.Ipaddr.pp addr in
+      if AddrCache.add addr_cache addr_str now then
+        traceln "%aZ: %s" ISO8601.Permissive.pp_datetime now addr_str
+  | _ -> ()
+
 let handle_conn ~signing_key net flow addr =
+  update_addr_cache addr;
   let wrapped_flow = Sockscaml.Server.handshake flow ~signing_key in
   Socks5.handle_client net wrapped_flow addr
 
