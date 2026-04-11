@@ -19,14 +19,15 @@
   base64
   bigstringaf
   cstruct
-  ISO8601
   ppx_cstruct
+  ISO8601
   eio
   eio_main
   ipaddr
   mirage-crypto-ec
   mirage-crypto-rng
-  otoml
+  sexplib
+  ppx_sexp_conv
   x509))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html

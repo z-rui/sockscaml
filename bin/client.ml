@@ -1,4 +1,5 @@
 open Eio.Std
+open Sexplib.Std
 
 type config = {
   listen_addr : string;
@@ -7,26 +8,9 @@ type config = {
   dial_service : string;
   identity_pub : string;
 }
+[@@deriving sexp]
 
-let load_config path =
-  let open Otoml in
-  try
-    let t = Parser.from_file path in
-    let remote_name = find t get_string [ "remote" ] in
-    let r = find t get_value [ remote_name ] in
-    {
-      listen_addr = find_or ~default:"127.0.0.1" t get_string [ "listen_addr" ];
-      listen_port = find t get_integer [ "listen_port" ];
-      dial_host = find r get_string [ "addr" ];
-      dial_service = find r (get_string ~strict:false) [ "port" ];
-      identity_pub =
-        find r (Fun.compose Base64.decode_exn get_string) [ "identity" ];
-    }
-  with Parse_error (loc, msg) ->
-    (match loc with
-    | Some (line, _) -> traceln "%s:%d: %s" path line msg
-    | _ -> traceln "%s" msg);
-    failwith "failed loading config file"
+let load_config path = Sexplib.Sexp.load_sexp_conv_exn path config_of_sexp
 
 let handle_conn ~cfg net flow _addr ~signing_pubkey =
   Eio.Net.with_tcp_connect net ~host:cfg.dial_host ~service:cfg.dial_service
@@ -39,7 +23,10 @@ let handle_conn ~cfg net flow _addr ~signing_pubkey =
 let main ~net ~cfg =
   Switch.run ~name:"main" @@ fun sw ->
   let signing_pubkey =
-    match Mirage_crypto_ec.Ed25519.pub_of_octets cfg.identity_pub with
+    match
+      Base64.decode_exn cfg.identity_pub
+      |> Mirage_crypto_ec.Ed25519.pub_of_octets
+    with
     | Ok pub -> pub
     | Error e ->
         traceln "%a" Mirage_crypto_ec.pp_error e;
@@ -59,7 +46,7 @@ let main ~net ~cfg =
   let socket = Eio.Net.listen ~sw net sockaddr ~backlog:10 ~reuse_addr:true in
   Eio.Net.run_server socket
     (handle_conn ~cfg net ~signing_pubkey)
-    ~on_error:(traceln "%a" Eio.Exn.pp)
+    ~stop:stop_p ~on_error:(traceln "%a" Eio.Exn.pp)
 
 let () =
   let cfg_path =

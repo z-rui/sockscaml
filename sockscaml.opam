@@ -11,14 +11,15 @@ depends: [
   "base64"
   "bigstringaf"
   "cstruct"
-  "ISO8601"
   "ppx_cstruct"
+  "ISO8601"
   "eio"
   "eio_main"
   "ipaddr"
   "mirage-crypto-ec"
   "mirage-crypto-rng"
-  "otoml"
+  "sexplib"
+  "ppx_sexp_conv"
   "x509"
   "odoc" {with-doc}
 ]

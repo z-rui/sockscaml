@@ -12,6 +12,7 @@
  (public_name ss-client)
  (modules client)
  (name client)
+ (preprocess (pps ppx_sexp_conv))
  (libraries
   sockscaml
   base64
@@ -20,7 +21,7 @@
   ipaddr
   mirage-crypto-ec
   mirage-crypto-rng.unix
-  otoml))
+  sexplib))
 
 (executable
  (public_name ss-server)
