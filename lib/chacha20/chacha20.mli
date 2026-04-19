@@ -5,6 +5,8 @@ val block_size : int
 type t
 (** A stateful stream processor using the Chacha20 algorithm. *)
 
+exception CounterOverflow
+
 val create : key:string -> nonce:string -> t
 (** [create ~key ~nonce] creates a new cipher using the given [key] and [nonce].
     The counter is initialized to zero.*)
@@ -20,7 +22,9 @@ val crypt : t -> Bigstringaf.t -> unit
     that calling [encrypt] multiple times has the same effect as calling it once
     with all the inputs concatenated.
 
-    Decryption is the same as encryption.*)
+    Decryption is the same as encryption.
+
+    @raise CounterOverflow The 32-bit counter is exhausted. *)
 
 val get_counter : t -> int32
 (** [get_counter t] gets the current cipher counter. *)
@@ -28,19 +32,6 @@ val get_counter : t -> int32
 val set_counter : t -> int32 -> unit
 (** [set_counter t ctr] sets the current cipher counter to [ctr]. *)
 
-val incr_counter : t -> unit
-(** [incr_counter t] Increments the current cipher counter by one.
-
-    @raise [CounterOverflow]
-      when the counter is already the maximum possible value. *)
-
-exception CounterOverflow
-
 val hchacha20 : key:string -> nonce:string -> string
 (** [hchacha20 key nonce] computes the hash of a 32-byte [key] with a 16-byte
     [nonce] using the HChacha20 algorithm. *)
-
-val xorblit : Bigstringaf.t -> int -> Bigstringaf.t -> int -> int -> unit
-(** [xorblit src src_pos dst dst_pos n] XORs each bit in [src] starting from
-    [src_pos] (in bytes) into each bit in [dst] starting from [dst_size], with
-    [n] bytes in total. *)

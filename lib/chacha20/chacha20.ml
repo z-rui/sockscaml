@@ -3,69 +3,33 @@ let nonce_size = 12
 let nonce_size_h = 16
 let block_size = 64
 
+type t
+
+exception CounterOverflow
+
+module Unsafe = struct
+  external create : key:string -> nonce:string -> t = "c_chacha20_create"
+
+  external crypt : t -> buf:Bigstringaf.t -> off:int -> len:int -> int
+    = "c_chacha20_crypt"
+  [@@noalloc]
+
+  external hchacha20 : key:string -> nonce:string -> string = "c_hchacha20"
+end
+
 let hchacha20 ~key ~nonce =
   if String.length key <> key_size then invalid_arg "bad key length";
   if String.length nonce <> nonce_size_h then invalid_arg "bad nounce length";
-  let buf = Bigstringaf.create block_size in
-  Unsafe.chacha20_init buf ~key ~nonce;
-  Unsafe.chacha20_block buf;
-  Bigstringaf.blit buf ~src_off:48 buf ~dst_off:16 ~len:16;
-  Bigstringaf.substring buf ~off:0 ~len:32
-
-let check_bounds size pos len =
-  if pos < 0 || pos > size then invalid_arg "bad pos";
-  if len < 0 || len > size - pos then invalid_arg "bad len"
-
-let xorblit src src_pos dst dst_pos n =
-  check_bounds (Bigstringaf.length src) src_pos n;
-  check_bounds (Bigstringaf.length dst) dst_pos n;
-  Unsafe.xorblit src src_pos dst dst_pos n
-
-type t = {
-  buf : Bigstringaf.t;  (** current block of key stream *)
-  init : Bigstringaf.t;  (** init state = (c, key, ctr, nonce) *)
-  mutable pos : int;  (** consumed bytes in buf *)
-}
-
-let[@inline] get_counter t = Bigstringaf.unsafe_get_int32_le t.init 48
-let[@inline] set_counter t ctr = Bigstringaf.unsafe_set_int32_le t.init 48 ctr
+  Unsafe.hchacha20 ~key ~nonce
 
 let create ~key ~nonce =
   if String.length key <> key_size then invalid_arg "bad key length";
   if String.length nonce <> nonce_size then invalid_arg "bad nonce length";
-  let state =
-    {
-      buf = Bigstringaf.create block_size;
-      init = Bigstringaf.create block_size;
-      pos = 0;
-    }
-  in
-  Unsafe.chacha20_init state.init ~key ~nonce;
-  state
+  Unsafe.create ~key ~nonce
 
-exception CounterOverflow
-
-let incr_counter t =
-  let ctr = get_counter t in
-  if ctr = Int32.max_int then raise CounterOverflow;
-  set_counter t (Int32.add ctr 1l)
-
-let[@inline] crypt_core t buf ~off ~len =
-  t.pos <- Unsafe.chacha20_crypt_core ~out:buf ~off ~len ~dst:t.buf ~src:t.init
+external get_counter : t -> int32 = "c_chacha20_get_counter"
+external set_counter : t -> int32 -> unit = "c_chacha20_set_counter" [@@noalloc]
 
 let crypt t buf =
   let len = Bigstringaf.length buf in
-  if t.pos = 0 then crypt_core t buf ~off:0 ~len
-  else
-    let n = block_size - t.pos in
-    if len < n then begin
-      Unsafe.xorblit t.buf t.pos buf 0 len;
-      t.pos <- t.pos + len
-    end
-    else begin
-      assert (n >= 0);
-      if n > 0 then Unsafe.xorblit t.buf t.pos buf 0 n;
-      t.pos <- 0;
-      incr_counter t;
-      if len > n then crypt_core t buf ~off:n ~len:(len - n)
-    end
+  if Unsafe.crypt t ~buf ~off:0 ~len = 1 then raise CounterOverflow

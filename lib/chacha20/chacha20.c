@@ -2,14 +2,14 @@
 #include <caml/mlvalues.h>
 #include <caml/bigarray.h>
 #include <caml/memory.h>
+#include <caml/alloc.h>
 #include <caml/fail.h>
+#include <caml/custom.h>
 
 #include <stdint.h>
 #include <string.h>
 
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#include "byteswap.h"
-#endif
+/* --- Core ChaCha20 Implementation --- */
 
 static inline uint32_t rotate(uint32_t x, unsigned n)
 {
@@ -18,155 +18,203 @@ static inline uint32_t rotate(uint32_t x, unsigned n)
     return hi | lo;
 }
 
-static inline uint32_t load_le32(const uint32_t *x)
+static inline uint32_t load_le32(const void *p)
 {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    return bswap_32(*x);
-#else
-    return *x;
-#endif
+    const uint8_t *q = (const uint8_t *) p;
+    return (uint32_t) q[0] |
+          ((uint32_t) q[1] << 8) |
+          ((uint32_t) q[2] << 16) |
+          ((uint32_t) q[3] << 24);
 }
 
-static inline void store_le32(uint32_t *x, uint32_t v)
+static inline void store_le32(void *p, uint32_t v)
 {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    *x = bswap_32(v);
-#else
-    *x = v;
-#endif
+    uint8_t *q = (uint8_t *) p;
+    q[0] = (uint8_t) v;
+    q[1] = (uint8_t) (v >> 8);
+    q[2] = (uint8_t) (v >> 16);
+    q[3] = (uint8_t) (v >> 24);
 }
 
-static inline void qr(uint32_t *pa, uint32_t *pb, uint32_t *pc, uint32_t *pd) {
-    uint32_t a = load_le32(pa);
-    uint32_t b = load_le32(pb);
-    uint32_t c = load_le32(pc);
-    uint32_t d = load_le32(pd);
-    d = rotate((a += b) ^ d, 16);
-    b = rotate(b ^ (c += d), 12);
-    d = rotate((a += b) ^ d, 8);
-    b = rotate(b ^ (c += d), 7);
-    store_le32(pa, a);
-    store_le32(pb, b);
-    store_le32(pc, c);
-    store_le32(pd, d);
+static inline void qr(uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d) {
+    *d = rotate((*a += *b) ^ *d, 16);
+    *b = rotate(*b ^ (*c += *d), 12);
+    *d = rotate((*a += *b) ^ *d, 8);
+    *b = rotate(*b ^ (*c += *d), 7);
 }
 
-static void chacha20_block(uint32_t *x) {
+static void chacha20_core(uint32_t x[16], const uint32_t in[16]) {
     int i;
+    memcpy(x, in, 64);
+
     for (i = 0; i < 10; i++) {
         /* column round */
-        qr(x + 0, x + 4, x + 8, x + 12);
-        qr(x + 1, x + 5, x + 9, x + 13);
-        qr(x + 2, x + 6, x + 10, x + 14);
-        qr(x + 3, x + 7, x + 11, x + 15);
+        qr(&x[0], &x[4], &x[8], &x[12]);
+        qr(&x[1], &x[5], &x[9], &x[13]);
+        qr(&x[2], &x[6], &x[10], &x[14]);
+        qr(&x[3], &x[7], &x[11], &x[15]);
         /* diagonal round */
-        qr(x + 0, x + 5, x + 10, x + 15);
-        qr(x + 1, x + 6, x + 11, x + 12);
-        qr(x + 2, x + 7, x + 8, x + 13);
-        qr(x + 3, x + 4, x + 9, x + 14);
+        qr(&x[0], &x[5], &x[10], &x[15]);
+        qr(&x[1], &x[6], &x[11], &x[12]);
+        qr(&x[2], &x[7], &x[8], &x[13]);
+        qr(&x[3], &x[4], &x[9], &x[14]);
     }
 }
 
-CAMLprim value c_chacha20_init(value v_output, value v_key, value v_nonce)
-{
-    CAMLparam3(v_output, v_key, v_nonce);
+static void chacha20_block(uint32_t out[16], const uint32_t in[16]) {
+    int i;
+    uint32_t x[16];
+    chacha20_core(x, in);
+    for (i = 0; i < 16; i++) {
+        out[i] = x[i] + in[i];
+    }
+}
 
-    // CAML allocation is always 4B aligned
-    uint32_t *output = (uint32_t *) Caml_ba_data_val(v_output);
-    const uint8_t *key = Bytes_val(v_key);
-    const uint8_t *nonce = Bytes_val(v_nonce);
+/* --- Opaque Context Structure --- */
+
+struct chacha20_ctx {
+    uint32_t state[16];     /* Internal state (Constants, Key, Counter, Nonce) */
+    uint32_t keystream[16]; /* Current block of generated keystream */
+    uint32_t pos;           /* Position in keystream (in bytes, 0-63) */
+};
+
+#define Ctx_val(v) ((struct chacha20_ctx *) Data_custom_val(v))
+
+static struct custom_operations chacha20_ops = {
+    "sockscaml.chacha20",
+    custom_finalize_default,
+    custom_compare_default,
+    custom_hash_default,
+    custom_serialize_default,
+    custom_deserialize_default,
+    custom_compare_ext_default,
+    custom_fixed_length_default
+};
+
+/* --- OCaml Bindings --- */
+
+CAMLprim value c_chacha20_create(value v_key, value v_nonce)
+{
+    CAMLparam2(v_key, v_nonce);
+    value v_ctx = caml_alloc_custom(&chacha20_ops, sizeof(struct chacha20_ctx), 0, 1);
+    struct chacha20_ctx *ctx = Ctx_val(v_ctx);
+    const uint8_t *key = (const uint8_t *) String_val(v_key);
+    const uint8_t *nonce = (const uint8_t *) String_val(v_nonce);
     mlsize_t nonce_len = caml_string_length(v_nonce);
 
-    memcpy(output, "expand 32-byte k", 16);
-    memcpy(output + 4, key, 32);
+    /* Constants */
+    ctx->state[0] = 0x61707865;
+    ctx->state[1] = 0x3320646e;
+    ctx->state[2] = 0x79622d32;
+    ctx->state[3] = 0x6b206574;
+    /* Key */
+    for (int i = 0; i < 8; i++) ctx->state[4 + i] = load_le32(key + i * 4);
+    /* Counter & Nonce */
+    ctx->state[12] = 0;
     switch (nonce_len) {
     case 8:
-        output[12] = output[13] = 0;
-        memcpy(output + 14, nonce, 8);
+        ctx->state[13] = 0;
+        for (int i = 0; i < 2; i++) ctx->state[14 + i] = load_le32(nonce + i * 4);
         break;
     case 12:
-        output[12] = 0;
-        memcpy(output + 13, nonce, 12);
+        for (int i = 0; i < 3; i++) ctx->state[13 + i] = load_le32(nonce + i * 4);
         break;
     case 16:
-        memcpy(output + 12, nonce, 16);
+        for (int i = 0; i < 4; i++) ctx->state[12 + i] = load_le32(nonce + i * 4);
         break;
     default:
-        caml_failwith("invalid nonce size");
-        break;
+        caml_invalid_argument("invalid nonce size");
     }
-    CAMLreturn(Val_unit);
+
+    ctx->pos = 0;
+    CAMLreturn(v_ctx);
 }
 
-CAMLprim value c_chacha20_block(value v_output)
+CAMLprim value c_hchacha20(value v_key, value v_nonce)
 {
-    CAMLparam1(v_output);
+    CAMLparam2(v_key, v_nonce);
+    uint32_t state[16];
+    uint32_t x[16];
+    const uint8_t *key = (const uint8_t *) String_val(v_key);
+    const uint8_t *nonce = (const uint8_t *) String_val(v_nonce);
 
-    chacha20_block((uint32_t *) Caml_ba_data_val(v_output));
-    CAMLreturn(Val_unit);
+    /* Constants */
+    state[0] = 0x61707865;
+    state[1] = 0x3320646e;
+    state[2] = 0x79622d32;
+    state[3] = 0x6b206574;
+    /* Key */
+    for (int i = 0; i < 8; i++) state[4 + i] = load_le32(key + i * 4);
+    /* Nonce */
+    for (int i = 0; i < 4; i++) state[12 + i] = load_le32(nonce + i * 4);
+
+    chacha20_core(x, state);
+
+    value v_res = caml_alloc_string(32);
+    uint8_t *res = (uint8_t *) Bytes_val(v_res);
+    store_le32(res + 0, x[0]);
+    store_le32(res + 4, x[1]);
+    store_le32(res + 8, x[2]);
+    store_le32(res + 12, x[3]);
+    store_le32(res + 16, x[12]);
+    store_le32(res + 20, x[13]);
+    store_le32(res + 24, x[14]);
+    store_le32(res + 28, x[15]);
+
+    CAMLreturn(v_res);
 }
 
-static inline void block_add(uint32_t *restrict dst, const uint32_t *restrict src)
+CAMLprim value c_chacha20_get_counter(value v_ctx)
 {
-    intnat i;
-
-    for (i = 0; i < 16; i++)
-        dst[i] += src[i];
+    return caml_copy_int32(Ctx_val(v_ctx)->state[12]);
 }
 
-CAMLprim value c_chacha20_block_add(value v_dst, value v_src)
+CAMLprim value c_chacha20_set_counter(value v_ctx, value v_ctr)
 {
-    CAMLparam2(v_dst, v_src);
-    uint32_t *dst = (uint32_t *) Caml_ba_data_val(v_dst);
-    const uint32_t *src = (const uint32_t *) Caml_ba_data_val(v_src);
-
-    memcpy(dst, src, 64);
-    chacha20_block(dst);
-    block_add(dst, src);
-    CAMLreturn(Val_unit);
+    Ctx_val(v_ctx)->state[12] = Int32_val(v_ctr);
+    Ctx_val(v_ctx)->pos = 0; /* Resetting counter invalidates current keystream block */
+    return Val_unit;
 }
 
-static inline void memxor(uint8_t *restrict dst, const uint8_t *restrict src, intnat n)
+/* Returns 0 on success, 1 on CounterOverflow */
+CAMLprim value c_chacha20_crypt(value v_ctx, value v_buf, value v_off, value v_len)
 {
-    intnat i;
-
-    for (i = 0; i < n; i++)
-        dst[i] ^= src[i];
-}
-
-CAMLprim value c_chacha20_xorblit(value v_src, value v_srcpos, value v_dst, value v_dstpos, value v_n)
-{
-    CAMLparam5(v_src, v_srcpos, v_dst, v_dstpos, v_n);
-    uint8_t *dst = Caml_ba_data_val(v_dst) + Long_val(v_dstpos);
-    const uint8_t *src = Caml_ba_data_val(v_src) + Long_val(v_srcpos);
-    intnat n = Long_val(v_n);
-    memxor(dst, src, n);
-    CAMLreturn(Val_unit);
-}
-
-CAMLprim value c_chacha20_crypt_core(value v_out, value v_off, value v_len, value v_dst, value v_src)
-{
-    CAMLparam5(v_out, v_off, v_len, v_dst, v_src);
-    uint8_t *out = Caml_ba_data_val(v_out) + Long_val(v_off);
+    struct chacha20_ctx *ctx = Ctx_val(v_ctx);
+    uint8_t *buf = Caml_ba_data_val(v_buf) + Long_val(v_off);
     intnat len = Long_val(v_len);
-    uint32_t *dst = (uint32_t *) Caml_ba_data_val(v_dst);
-    uint32_t *src = (uint32_t *) Caml_ba_data_val(v_src);
-    uint32_t *ctr = &src[12];
+    uint8_t *ks8 = (uint8_t *) ctx->keystream;
 
-    while (len > 64) {
-        memcpy(dst, src, 64);
-        chacha20_block(dst);
-        block_add(dst, src);
-        memxor(out, (uint8_t *) dst, 64);
-        store_le32(ctr, load_le32(ctr) + 1);
-        out += 64;
+    /* 1. Consume remaining keystream from buffer */
+    while (len > 0 && ctx->pos > 0) {
+        *buf++ ^= ks8[ctx->pos++];
+        ctx->pos &= 63;
+        len--;
+    }
+
+    /* 2. Process full blocks */
+    while (len >= 64) {
+        if (ctx->state[12] == 0xFFFFFFFF) return Val_int(1);
+
+        chacha20_block(ctx->keystream, ctx->state);
+        ctx->state[12]++;
+
+        for (int i = 0; i < 64; i++) buf[i] ^= ks8[i];
+
+        buf += 64;
         len -= 64;
     }
+
+    /* 3. Handle trailing bytes */
     if (len > 0) {
-        memcpy(dst, src, 64);
-        chacha20_block(dst);
-        block_add(dst, src);
-        memxor(out, (uint8_t *) dst, len);
+        if (ctx->state[12] == 0xFFFFFFFF) return Val_int(1);
+
+        chacha20_block(ctx->keystream, ctx->state);
+        ctx->state[12]++;
+
+        for (int i = 0; i < len; i++) {
+            buf[i] ^= ks8[ctx->pos++];
+        }
     }
-    CAMLreturn(Val_int(len));
+
+    return Val_int(0);
 }

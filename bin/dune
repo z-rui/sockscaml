@@ -12,7 +12,8 @@
  (public_name ss-client)
  (modules client)
  (name client)
- (preprocess (pps ppx_sexp_conv))
+ (preprocess
+  (pps ppx_sexp_conv))
  (libraries
   sockscaml
   base64
