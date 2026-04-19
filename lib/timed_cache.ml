@@ -23,7 +23,7 @@ module Make (Key : Hashtbl.HashedType) : S with type key = Key.t = struct
   let add t key now =
     let rec remove_expired () =
       match Queue.peek_opt t.entries with
-      | Some (key, creation) when creation -. now >= t.ttl ->
+      | Some (key, creation) when now -. creation >= t.ttl ->
           Lookup.remove t.lookup key;
           ignore (Queue.take t.entries);
           remove_expired ()
