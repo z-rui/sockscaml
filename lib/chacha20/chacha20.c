@@ -61,12 +61,12 @@ static void chacha20_core(uint32_t x[16], const uint32_t in[16]) {
     }
 }
 
-static void chacha20_block(uint32_t out[16], const uint32_t in[16]) {
+static void chacha20_block(uint8_t out[64], const uint32_t in[16]) {
     int i;
     uint32_t x[16];
     chacha20_core(x, in);
     for (i = 0; i < 16; i++) {
-        out[i] = x[i] + in[i];
+        store_le32(out + (i * 4), x[i] + in[i]);
     }
 }
 
@@ -74,7 +74,7 @@ static void chacha20_block(uint32_t out[16], const uint32_t in[16]) {
 
 struct chacha20_ctx {
     uint32_t state[16];     /* Internal state (Constants, Key, Counter, Nonce) */
-    uint32_t keystream[16]; /* Current block of generated keystream */
+    uint8_t  keystream[64]; /* Current block of generated keystream */
     uint32_t pos;           /* Position in keystream (in bytes, 0-63) */
 };
 
@@ -182,7 +182,7 @@ CAMLprim value c_chacha20_crypt(value v_ctx, value v_buf, value v_off, value v_l
     struct chacha20_ctx *ctx = Ctx_val(v_ctx);
     uint8_t *buf = Caml_ba_data_val(v_buf) + Long_val(v_off);
     intnat len = Long_val(v_len);
-    uint8_t *ks8 = (uint8_t *) ctx->keystream;
+    uint8_t *ks8 = ctx->keystream;
 
     /* 1. Consume remaining keystream from buffer */
     while (len > 0 && ctx->pos > 0) {
