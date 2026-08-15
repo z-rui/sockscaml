@@ -93,8 +93,10 @@ let handle_socks5_cmd net buf flow =
   with
   | Eio.Io (Eio.Net.E (Connection_failure (Refused _)), _) ->
       raise (E Connection_refused)
-  | Eio.Io (Eio.Net.E (Connection_failure (No_matching_addresses | Timeout)), _)
+  | Eio.Io (Eio.Net.E (Connection_failure Timeout), _)
     ->
+      raise (E Host_unreachable)
+  | Eio.Io (Eio.Net.E (Address_lookup_failed _), _) ->
       raise (E Host_unreachable)
   | _ -> raise (E ServerFailure)
 
